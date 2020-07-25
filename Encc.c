@@ -149,37 +149,39 @@ struct Node {
     long val;        // kindがND_NUMの場合のみ使う
 };
 
-static Node *new_node(NodeKind kind);
-static Node *binary(NodeKind kind, Node *lhs, Node *rhs);
-static Node *new_num(int val);
+Node *new_node(NodeKind kind);
+Node *binary(NodeKind kind, Node *lhs, Node *rhs);
+Node *new_num(int val);
 
 // 左辺と右辺を受け取る2項演算子
-static Node *new_node(NodeKind kind) {
+Node *new_node(NodeKind kind) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
     return node;
 }
 
 // 左辺と右辺を受け取る2項演算子
-static Node *new_binary(NodeKind kind, Node *lhs, Node *rhs) {
+Node *new_binary(NodeKind kind, Node *lhs, Node *rhs) {
     Node *node = new_node(kind);
     node->lhs = lhs;
     node->rhs = rhs;
     return node;
 }
 
-static Node *new_num(int val) {
+Node *new_num(int val) {
     Node *node = new_node(ND_NUM);
     node->val = val;
     return node;
 }
 
-static Node *expr(void);
-static Node *mul(void);
-static Node *primary(void);
+Node *expr();
+Node *mul();
+Node *unary();
+Node *primary();
 
 // パーサ（左結合の演算子をパーズする）
-static Node *expr(void){
+// expr = mul ("+" mu | "-" mul)*
+Node *expr(){
     Node *node = mul();
 
     for(;;){
@@ -193,21 +195,33 @@ static Node *expr(void){
 }
 
 // expr関数で使用するmul関数
-static Node *mul(void) {
-    Node *node = primary();
+// mul = unary ("*" unary | "/" unary)*
+Node *mul() {
+    Node *node = unary();
 
     for(;;){
         if (consume('*'))
-            node = new_binary(ND_MUL, node, primary());
+            node = new_binary(ND_MUL, node, unary());
         else if (consume('/'))
-            node = new_binary(ND_DIV, node, primary());
+            node = new_binary(ND_DIV, node, unary());
         else
             return node;
     }
 }
 
-// mul関数でしようするprimary関数
-static Node *primary(void) {
+// unary operator(単項演算子)をパースする関数
+// unary = ("+" | "-")? unary | primary
+Node *unary() {
+    if (consume('+'))
+        return unary();
+    if (consume('-'))
+        return new_binary(ND_SUB, new_num(0), unary());
+    return primary();
+}
+
+// unary関数でしようするprimary関数
+// primary = "(" expr ")" | num
+Node *primary() {
     // 次のトークンが"("なら、"(" expr ")"のはず
     if (consume('(')) {
         Node *node = expr();
@@ -218,6 +232,9 @@ static Node *primary(void) {
     // そうでなければ数値のはず
     return new_num(expect_number());
 }
+
+
+// Code generator(コード生成器) ////////////////////////////////
 
 // スタックマシンをレジスタマシンにエミュレートする関数
 void gen(Node *node) {
